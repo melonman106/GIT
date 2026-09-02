@@ -1,0 +1,16 @@
+- uses: isikerhan/setup-git@v1
+  with:
+    # Git version for Linux and macOS runners,
+    # or Git for Windows version for Windows runners
+    git-version: 2.23.0 # or 2.23.0.windows.1 for Windows
+    
+    # Installed Git binaries are cached by default and reused in subsequent runs
+    cache: false # disable cache
+    
+    # Verbose output is disabled by default
+    verbose: true # enable verbose output
+    
+    # Installation ID is used for identifying the Git installation, and is optional
+    # Currently it's only used in the cache key, prepended to it if present
+    installation-id: ${{ github.run_id }} # Run ID will be prepended to each cache key.
+    # This ensures that each run has a unique cache entry.
