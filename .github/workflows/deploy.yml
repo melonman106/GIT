@@ -1,4 +1,3 @@
-```yaml
 name: Generate Relay Secrets
 
 on:
@@ -23,24 +22,3 @@ jobs:
           echo "Leave this empty unless you are using a private Node relay."
           echo
           echo "========================================"
-```
-
-Run it from:
-
-**GitHub → Actions → Generate Relay Secrets → Run workflow**
-
-It will produce a strong random `RELAY_SECRET` in the workflow output.
-
-Then in Cloudflare, add it as:
-
-```text
-RELAY_SECRET = <generated value>
-```
-
-and set:
-
-```text
-RELAY_PUBLIC = 0
-```
-
-**Important:** because the secret appears in GitHub Actions logs, don't use the generated value anywhere else if you later make the repository public. For your current private repository, this is much less exposed, but storing the secret directly as a GitHub/Cloudflare secret is still preferable.
