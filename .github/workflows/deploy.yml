@@ -1,22 +1,46 @@
-name: Deploy Eaglercraft Relay
+```yaml
+name: Generate Relay Secrets
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
-  deploy:
+  generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Generate secrets
+        run: |
+          echo "========================================"
+          echo "EAGLERCRAFT RELAY SECRETS"
+          echo "========================================"
+          echo
+          echo "RELAY_SECRET:"
+          openssl rand -base64 48
+          echo
+          echo "========================================"
+          echo "RELAY_MINECRAFT_UPSTREAM:"
+          echo "Leave this empty unless you are using a private Node relay."
+          echo
+          echo "========================================"
+```
 
-      - name: Deploy Cloudflare Worker
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+Run it from:
+
+**GitHub → Actions → Generate Relay Secrets → Run workflow**
+
+It will produce a strong random `RELAY_SECRET` in the workflow output.
+
+Then in Cloudflare, add it as:
+
+```text
+RELAY_SECRET = <generated value>
+```
+
+and set:
+
+```text
+RELAY_PUBLIC = 0
+```
+
+**Important:** because the secret appears in GitHub Actions logs, don't use the generated value anywhere else if you later make the repository public. For your current private repository, this is much less exposed, but storing the secret directly as a GitHub/Cloudflare secret is still preferable.
