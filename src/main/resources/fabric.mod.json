@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "server-info",
+  "version": "${version}",
+  "name": "Server Info",
+  "description": "Server-only GUI showing installed Fabric mods and active datapacks.",
+  "authors": ["Alexander"],
+  "environment": "server",
+  "entrypoints": {
+    "main": ["com.alexander.serverinfo.ServerInfoMod"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
