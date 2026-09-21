@@ -1,4 +1,3 @@
-```yaml
 name: Build Mod
 
 on:
@@ -44,4 +43,3 @@ jobs:
           name: fabric-mod
           path: build/libs/*.jar
           if-no-files-found: error
-```
