@@ -1,25 +1,28 @@
 package com.alexander.serverinfo;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
-import net.minecraft.world.inventory.MenuConstructor;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
-import net.minecraft.world.item.component.ItemName;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -64,7 +67,7 @@ public class ServerInfoMod implements ModInitializer {
         );
     }
 
-    private static int open(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, int tab, int page) {
+    private static int open(CommandContext<CommandSourceStack> ctx, int tab, int page) {
         ServerPlayer player;
         try {
             player = ctx.getSource().getPlayerOrException();
@@ -73,7 +76,14 @@ public class ServerInfoMod implements ModInitializer {
             return 0;
         }
 
-        player.openMenu(new InfoMenuProvider(tab, page));
+        // Get the server from the command source instead of reaching into a
+        // private ServerPlayer field — this is the standard, always-public way.
+        MinecraftServer server = ctx.getSource().getServer();
+
+        player.openMenu(new SimpleMenuProvider(
+            (containerId, inventory, menuPlayer) -> new InfoMenu(containerId, inventory, server, tab, page),
+            Component.literal("Server Information")
+        ));
         return 1;
     }
 
@@ -94,42 +104,26 @@ public class ServerInfoMod implements ModInitializer {
             .toList();
     }
 
-    private static class InfoMenuProvider implements MenuConstructor {
-        private final int tab;
-        private final int page;
-
-        InfoMenuProvider(int tab, int page) {
-            this.tab = tab;
-            this.page = page;
-        }
-
-        @Override
-        public AbstractContainerMenu createMenu(int containerId, net.minecraft.world.entity.player.Inventory inventory,
-                                                 net.minecraft.world.entity.player.Player player) {
-            return new InfoMenu(containerId, inventory, tab, page);
-        }
-    }
-
     private static class InfoMenu extends ChestMenu {
+        private final MinecraftServer server;
         private final int tab;
         private final int page;
 
-        InfoMenu(int id, net.minecraft.world.entity.player.Inventory inventory, int tab, int page) {
-            super(MenuType.GENERIC_6x9, id, inventory, new SimpleContainer(54), 6);
+        InfoMenu(int id, Inventory inventory, MinecraftServer server, int tab, int page) {
+            super(MenuType.GENERIC_9x6, id, inventory, new SimpleContainer(54), 6);
+            this.server = server;
             this.tab = tab;
             this.page = page;
-            populate(inventory.player);
+            populate();
         }
 
-        private void populate(net.minecraft.world.entity.player.Player player) {
+        private void populate() {
             Container container = getContainer();
             for (int i = 0; i < 54; i++) {
                 container.setItem(i, ItemStack.EMPTY);
             }
 
-            List<String> entries = tab == TAB_MODS
-                ? mods()
-                : datapacks(((ServerPlayer) player).server);
+            List<String> entries = tab == TAB_MODS ? mods() : datapacks(server);
 
             int pages = Math.max(1, (entries.size() + PAGE_SIZE - 1) / PAGE_SIZE);
             int clampedPage = Math.min(page, pages - 1);
@@ -138,26 +132,24 @@ public class ServerInfoMod implements ModInitializer {
 
             placeHeader();
             placeTabs();
-            placeEntries(container, entries, tab, start, end);
+            placeEntries(container, entries, start, end);
             placeFooter(entries.size(), clampedPage, pages);
         }
 
         private void placeHeader() {
-            Container container = getContainer();
-            container.setItem(0, named(Items.BOOK, GOLD + BOLD + "Server Information",
+            getContainer().setItem(0, named(Items.BOOK, GOLD + BOLD + "Server Information",
                 GRAY + "Server-side only",
                 GRAY + "No client mod required"));
         }
 
         private void placeTabs() {
-            Container container = getContainer();
-            container.setItem(3, named(Items.COMPASS, GREEN + BOLD + "Installed Mods",
+            getContainer().setItem(3, named(Items.COMPASS, GREEN + BOLD + "Installed Mods",
                 GRAY + "Run /serverinfo mods to view"));
-            container.setItem(5, named(Items.KNOWLEDGE_BOOK, AQUA + BOLD + "Active Datapacks",
+            getContainer().setItem(5, named(Items.KNOWLEDGE_BOOK, AQUA + BOLD + "Active Datapacks",
                 GRAY + "Run /serverinfo datapacks to view"));
         }
 
-        private void placeEntries(Container container, List<String> entries, int tab, int start, int end) {
+        private void placeEntries(Container container, List<String> entries, int start, int end) {
             Item entryIcon = tab == TAB_MODS ? Items.PAPER : Items.BOOK;
             for (int i = start; i < end; i++) {
                 int slot = 9 + (i - start);
@@ -191,24 +183,24 @@ public class ServerInfoMod implements ModInitializer {
 
         private ItemStack named(Item item, String name, String... lore) {
             ItemStack stack = new ItemStack(item);
-            stack.set(ItemName.NAME, Component.literal(name));
+            stack.set(DataComponents.CUSTOM_NAME, Component.literal(name));
             if (lore.length > 0) {
                 List<Component> lines = new ArrayList<>();
                 for (String line : lore) {
                     lines.add(Component.literal(line));
                 }
-                stack.set(ItemLore.LORE, new ItemLore(lines));
+                stack.set(DataComponents.LORE, new ItemLore(lines));
             }
             return stack;
         }
 
         @Override
-        public ItemStack quickMoveStack(net.minecraft.world.entity.player.Player player, int index) {
+        public ItemStack quickMoveStack(Player player, int index) {
             return ItemStack.EMPTY;
         }
 
         @Override
-        public boolean stillValid(net.minecraft.world.entity.player.Player player) {
+        public boolean stillValid(Player player) {
             return true;
         }
     }
