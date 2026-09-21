@@ -1,4 +1,4 @@
-name: Build Mod
+name: Build Fabric Mod
 
 on:
   push:
@@ -24,22 +24,24 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-          cache: gradle
 
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
 
       - name: Build mod
-        run: ./gradlew build --no-daemon
+        run: gradle build --no-daemon
 
-      - name: Find built JAR
+      - name: List built JARs
         run: |
-          echo "Built files:"
-          find build/libs -maxdepth 1 -type f -name "*.jar" -print
+          echo "Built JAR files:"
+          ls -lh build/libs/
 
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
-          name: fabric-mod
+          name: server-info-fabric-26.2
           path: build/libs/*.jar
           if-no-files-found: error
+          retention-days: 30
