@@ -36,3 +36,11 @@ Output:
 `build/libs/server-info-1.0.0.jar`
 
 Install that JAR only in the server's `mods` folder.
+
+### Notes on Minecraft 26.x
+
+Minecraft 26.1+ ships unobfuscated (official Mojang mappings baked in), so
+Fabric Loom no longer creates the `modImplementation` / `modApi` /
+`modCompileOnly` configurations — plain `implementation`, `api`, and
+`compileOnly` are used instead, and there is no `mappings` line in
+`build.gradle`.
