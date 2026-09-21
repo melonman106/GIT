@@ -1,18 +1,12 @@
 package com.alexander.serverinfo;
 
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
-import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Container;
@@ -21,6 +15,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.MenuConstructor;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
@@ -30,9 +25,27 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Server-only mod that lists installed Fabric mods and active datapacks
+ * through a plain vanilla chest GUI, so unmodded clients can view it.
+ */
 public class ServerInfoMod implements ModInitializer {
     public static final String MOD_ID = "server-info";
+
     private static final int PAGE_SIZE = 36;
+
+    // Tabs
+    private static final int TAB_MODS = 0;
+    private static final int TAB_DATAPACKS = 1;
+
+    // Text colors
+    private static final String GOLD = "§6";
+    private static final String GREEN = "§a";
+    private static final String AQUA = "§b";
+    private static final String YELLOW = "§e";
+    private static final String GRAY = "§7";
+    private static final String WHITE = "§f";
+    private static final String BOLD = "§l";
 
     @Override
     public void onInitialize() {
@@ -43,15 +56,15 @@ public class ServerInfoMod implements ModInitializer {
 
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("serverinfo")
-            .executes(ctx -> open(ctx, 0, 0))
+            .executes(ctx -> open(ctx, TAB_MODS, 0))
             .then(Commands.literal("mods")
-                .executes(ctx -> open(ctx, 0, 0)))
+                .executes(ctx -> open(ctx, TAB_MODS, 0)))
             .then(Commands.literal("datapacks")
-                .executes(ctx -> open(ctx, 1, 0)))
+                .executes(ctx -> open(ctx, TAB_DATAPACKS, 0)))
         );
     }
 
-    private static int open(CommandContext<CommandSourceStack> ctx, int tab, int page) {
+    private static int open(com.mojang.brigadier.context.CommandContext<CommandSourceStack> ctx, int tab, int page) {
         ServerPlayer player;
         try {
             player = ctx.getSource().getPlayerOrException();
@@ -60,8 +73,7 @@ public class ServerInfoMod implements ModInitializer {
             return 0;
         }
 
-        InfoMenuProvider provider = new InfoMenuProvider(tab, page);
-        player.openMenu(provider);
+        player.openMenu(new InfoMenuProvider(tab, page));
         return 1;
     }
 
@@ -69,8 +81,9 @@ public class ServerInfoMod implements ModInitializer {
         return FabricLoader.getInstance().getAllMods().stream()
             .sorted(Comparator.comparing(m -> m.getMetadata().getId(), String.CASE_INSENSITIVE_ORDER))
             .map(m -> {
-                var md = m.getMetadata();
-                return md.getId() + "  •  " + md.getName() + "  •  " + md.getVersion().getFriendlyString();
+                var metadata = m.getMetadata();
+                return metadata.getId() + GRAY + "  •  " + WHITE + metadata.getName()
+                    + GRAY + "  •  " + WHITE + metadata.getVersion().getFriendlyString();
             })
             .toList();
     }
@@ -92,7 +105,7 @@ public class ServerInfoMod implements ModInitializer {
 
         @Override
         public AbstractContainerMenu createMenu(int containerId, net.minecraft.world.entity.player.Inventory inventory,
-                                                net.minecraft.world.entity.player player) {
+                                                 net.minecraft.world.entity.player.Player player) {
             return new InfoMenu(containerId, inventory, tab, page);
         }
     }
@@ -109,58 +122,81 @@ public class ServerInfoMod implements ModInitializer {
         }
 
         private void populate(net.minecraft.world.entity.player.Player player) {
-            Container c = getContainer();
-            for (int i = 0; i < 54; i++) c.setItem(i, ItemStack.EMPTY);
+            Container container = getContainer();
+            for (int i = 0; i < 54; i++) {
+                container.setItem(i, ItemStack.EMPTY);
+            }
 
-            // Header
-            c.setItem(0, named(Items.BOOK, "§6§lServer Information",
-                "§7Server-side only", "§7No client mod required"));
-
-            c.setItem(3, named(Items.COMPASS, "§a§lInstalled Mods",
-                "§7Click /serverinfo mods in chat to switch"));
-            c.setItem(5, named(Items.KNOWLEDGE_BOOK, "§b§lActive Datapacks",
-                "§7Click /serverinfo datapacks in chat to switch"));
-
-            List<String> list = tab == 0
+            List<String> entries = tab == TAB_MODS
                 ? mods()
                 : datapacks(((ServerPlayer) player).server);
 
-            int start = page * PAGE_SIZE;
-            int end = Math.min(start + PAGE_SIZE, list.size());
+            int pages = Math.max(1, (entries.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+            int clampedPage = Math.min(page, pages - 1);
+            int start = clampedPage * PAGE_SIZE;
+            int end = Math.min(start + PAGE_SIZE, entries.size());
 
-            for (int i = start; i < end; i++) {
-                String value = list.get(i);
-                int slot = 9 + (i - start);
-                ItemStack item = named(tab == 0 ? Items.PAPER : Items.BOOK,
-                    "§f" + value);
-                c.setItem(slot, item);
-            }
-
-            int pages = Math.max(1, (list.size() + PAGE_SIZE - 1) / PAGE_SIZE);
-
-            if (page > 0) {
-                c.setItem(45, named(Items.ARROW, "§ePrevious Page",
-                    "§7Page " + page + " / " + pages));
-            }
-            c.setItem(49, named(Items.NETHER_STAR, "§6§l" + (tab == 0 ? "MODS" : "DATAPACKS"),
-                "§7" + list.size() + " total", "§7Page " + (page + 1) + " / " + pages));
-            if (page + 1 < pages) {
-                c.setItem(53, named(Items.ARROW, "§eNext Page",
-                    "§7Page " + (page + 2) + " / " + pages));
-            }
-
-            c.setItem(47, named(Items.IRON_SWORD, "§aMods",
-                "§7Use §f/serverinfo mods"));
-            c.setItem(51, named(Items.BOOK, "§bDatapacks",
-                "§7Use §f/serverinfo datapacks"));
+            placeHeader();
+            placeTabs();
+            placeEntries(container, entries, tab, start, end);
+            placeFooter(entries.size(), clampedPage, pages);
         }
 
-        private ItemStack named(net.minecraft.world.item.Item item, String name, String... lore) {
+        private void placeHeader() {
+            Container container = getContainer();
+            container.setItem(0, named(Items.BOOK, GOLD + BOLD + "Server Information",
+                GRAY + "Server-side only",
+                GRAY + "No client mod required"));
+        }
+
+        private void placeTabs() {
+            Container container = getContainer();
+            container.setItem(3, named(Items.COMPASS, GREEN + BOLD + "Installed Mods",
+                GRAY + "Run /serverinfo mods to view"));
+            container.setItem(5, named(Items.KNOWLEDGE_BOOK, AQUA + BOLD + "Active Datapacks",
+                GRAY + "Run /serverinfo datapacks to view"));
+        }
+
+        private void placeEntries(Container container, List<String> entries, int tab, int start, int end) {
+            Item entryIcon = tab == TAB_MODS ? Items.PAPER : Items.BOOK;
+            for (int i = start; i < end; i++) {
+                int slot = 9 + (i - start);
+                container.setItem(slot, named(entryIcon, WHITE + entries.get(i)));
+            }
+        }
+
+        private void placeFooter(int total, int page, int pages) {
+            Container container = getContainer();
+
+            if (page > 0) {
+                container.setItem(45, named(Items.ARROW, YELLOW + "Previous Page",
+                    GRAY + "Go to page " + page + " / " + pages));
+            }
+
+            container.setItem(49, named(Items.NETHER_STAR,
+                GOLD + BOLD + (tab == TAB_MODS ? "MODS" : "DATAPACKS"),
+                GRAY + total + " total",
+                GRAY + "Page " + (page + 1) + " / " + pages));
+
+            if (page + 1 < pages) {
+                container.setItem(53, named(Items.ARROW, YELLOW + "Next Page",
+                    GRAY + "Go to page " + (page + 2) + " / " + pages));
+            }
+
+            container.setItem(47, named(Items.IRON_SWORD, GREEN + "Mods",
+                GRAY + "Use " + WHITE + "/serverinfo mods"));
+            container.setItem(51, named(Items.BOOK, AQUA + "Datapacks",
+                GRAY + "Use " + WHITE + "/serverinfo datapacks"));
+        }
+
+        private ItemStack named(Item item, String name, String... lore) {
             ItemStack stack = new ItemStack(item);
-            stack.set(ItemName.NAME, Component.literal(name.replace("§", "§")));
+            stack.set(ItemName.NAME, Component.literal(name));
             if (lore.length > 0) {
                 List<Component> lines = new ArrayList<>();
-                for (String line : lore) lines.add(Component.literal(line));
+                for (String line : lore) {
+                    lines.add(Component.literal(line));
+                }
                 stack.set(ItemLore.LORE, new ItemLore(lines));
             }
             return stack;
